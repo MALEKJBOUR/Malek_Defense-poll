@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dissertation Defense Scheduling</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: one column, summary first (who has answered, best times), then a date x time grid where each cell holds four committee chips. */
+:root{
+  --bg:#f3f5f7; --surface:#ffffff; --ink:#14212b; --muted:#5a6b78; --line:#d5dce2;
+  --accent:#1f5f8b; --accent-soft:#e3eef6;
+  --yes:#1d7a4c; --yes-soft:#dff2e7; --maybe:#a86a00; --maybe-soft:#fbeed2;
+  --display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#10171d; --surface:#18222b; --ink:#e8eef2; --muted:#98a8b4; --line:#2c3a46;
+    --accent:#7db9e0; --accent-soft:#1d3344;
+    --yes:#5fd093; --yes-soft:#173a29; --maybe:#f0b84a; --maybe-soft:#3d3013;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#10171d; --surface:#18222b; --ink:#e8eef2; --muted:#98a8b4; --line:#2c3a46;
+  --accent:#7db9e0; --accent-soft:#1d3344;
+  --yes:#5fd093; --yes-soft:#173a29; --maybe:#f0b84a; --maybe-soft:#3d3013;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5}
+main{max-width:860px;margin:0 auto;padding:32px 16px 56px;display:flex;flex-direction:column;gap:24px}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(1.6rem,4.5vw,2.25rem);line-height:1.15;margin:0;text-wrap:balance}
+h2{font-family:var(--display);font-weight:500;font-size:1.15rem;margin:0}
+p{margin:0}
+.lede{color:var(--muted);max-width:65ch;margin-top:8px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:14px}
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:10px 14px;border-radius:0 8px 8px 0;font-size:.95rem}
+.note[hidden]{display:none}
+
+/* who are you */
+.who{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.who .p{font:inherit;color:inherit;text-align:left;background:var(--surface);border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.who .p.me{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.who .nm{font-weight:600}
+.who .rl{font-size:.82rem;color:var(--muted)}
+.who .st{font-size:.8rem;margin-top:4px;display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.who .st::before{content:"";width:8px;height:8px;border-radius:50%;border:1.5px solid var(--muted)}
+.who .st.done{color:var(--yes)}
+.who .st.done::before{background:var(--yes);border-color:var(--yes)}
+.row{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between}
+.hint{color:var(--muted);font-size:.92rem}
+.linkbtn{font:inherit;font-size:.9rem;background:none;border:1px solid var(--line);border-radius:6px;padding:5px 10px;color:var(--ink);cursor:pointer}
+.linkbtn:hover{border-color:var(--accent);color:var(--accent)}
+#save{font-size:.85rem;color:var(--muted);min-height:1.3em}
+
+/* best */
+.best{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.best li{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;justify-content:space-between;padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-variant-numeric:tabular-nums}
+.best li.all{border-color:var(--yes);background:var(--yes-soft)}
+.best .when{font-weight:600}
+.best .cnt{font-size:.88rem;color:var(--muted)}
+.best li.all .cnt{color:var(--yes);font-weight:600}
+
+/* grid */
+.scroll{overflow-x:auto}
+table{border-collapse:separate;border-spacing:0 6px;width:100%;min-width:470px;font-variant-numeric:tabular-nums}
+th{font-weight:600;font-size:.85rem;text-align:left;padding:0 6px 2px;color:var(--muted)}
+thead th{text-align:center}
+thead th:first-child{text-align:left}
+tbody th{white-space:nowrap;color:var(--ink);font-size:.95rem;padding-right:10px}
+tbody th small{display:block;color:var(--muted);font-weight:400;font-size:.8rem}
+tr.wk td{padding:10px 6px 0;font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+td{padding:0 3px}
+.cell{width:100%;font:inherit;color:inherit;background:var(--bg);border:1.5px solid var(--line);border-radius:8px;padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:5px}
+button.cell{cursor:pointer}
+button.cell:hover{border-color:var(--accent)}
+.cell.all{border-color:var(--yes);background:var(--yes-soft)}
+.cell.mine-yes{box-shadow:inset 0 0 0 1.5px var(--yes)}
+.cell.mine-maybe{box-shadow:inset 0 0 0 1.5px var(--maybe)}
+.chips{display:flex;gap:3px;flex-wrap:wrap;justify-content:center}
+.chip{width:25px;height:21px;border-radius:4px;border:1px dashed var(--line);font-size:.66rem;font-weight:600;display:grid;place-items:center;color:var(--muted);opacity:.75}
+.chip.yes{background:var(--yes);border:1px solid var(--yes);color:var(--surface);opacity:1}
+.chip.maybe{background:var(--maybe-soft);border:1.5px solid var(--maybe);color:var(--maybe);opacity:1}
+.chip.me{outline:2px solid var(--accent);outline-offset:1px}
+.tally{font-size:.76rem;color:var(--muted)}
+.cell.all .tally{color:var(--yes);font-weight:600}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:.85rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:480px){ .chip{width:22px;height:19px} main{padding-top:20px} }
+@media (prefers-reduced-motion:no-preference){ .cell,.who .p{transition:border-color .12s,background-color .12s} }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Dissertation defense: when are you available?</h1>
+    <p class="lede">Please mark every 2-hour slot you could attend between Wednesday, January 20 and Friday, February 5, 2027. All times are Mountain Time. The defense will be set at a time that works for all four committee members.</p>
+  </header>
+
+  <p class="note" id="notice" hidden></p>
+
+  <section class="panel" aria-labelledby="h-who">
+    <h2 id="h-who">Committee</h2>
+    <div class="who" id="who"></div>
+    <div class="row">
+      <p class="hint" id="howto"></p>
+      <span id="save" role="status" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-grid">
+    <div class="row">
+      <h2 id="h-grid">Mark the times that work</h2>
+      <button class="linkbtn" id="clear" type="button" hidden>Clear my answers</button>
+    </div>
+    <div class="legend" aria-hidden="true">
+      <span><i class="chip yes">ST</i> Available</span>
+      <span><i class="chip maybe">ST</i> If needed</span>
+      <span><i class="chip">ST</i> Not marked</span>
+      <span>Tap once for available, twice for if needed, three times to clear.</span>
+    </div>
+    <div class="scroll"><table id="grid"></table></div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-best">
+    <h2 id="h-best">Best times so far</h2>
+    <ul class="best" id="best"></ul>
+  </section>
+</main>
+
+<script>
+/* ============ SETUP: paste your Firebase Realtime Database URL between the quotes ============
+   It looks like  https://your-project-default-rtdb.firebaseio.com                              */
+const DB_URL = "https://defensetime2027-default-rtdb.firebaseio.com";
+/* ============================================================================================ */
+
+const MEMBERS = [
+  {id:"tran",     name:"Dr. Son Tran",            role:"Chairperson (Advisor)",   ini:"ST"},
+  {id:"hamilton", name:"Dr. Bill Hamilton",       role:"Committee Member",        ini:"BH"},
+  {id:"lopez",    name:"Dr. Efren Lopez Morales", role:"Committee Member",        ini:"EL"},
+  {id:"fuqua",    name:"Dr. Don Fuqua",           role:"Dean's Representative",   ini:"DF"}
+];
+const TIMES = [
+  {k:"14", label:"2:00 – 4:00 PM"},
+  {k:"15", label:"3:00 – 5:00 PM"},
+  {k:"16", label:"4:00 – 6:00 PM"}
+];
+const WD = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const MO = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const DAYS = [];
+for (let d = new Date(2027,0,20); d <= new Date(2027,1,5); d.setDate(d.getDate()+1)) {
+  const w = d.getDay();
+  if (w === 0 || w === 6) continue;
+  const key = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  const mon = new Date(d); mon.setDate(d.getDate() - (w-1));
+  DAYS.push({key, wd:WD[w], label:MO[d.getMonth()]+" "+d.getDate(), week:"Week of "+MO[mon.getMonth()]+" "+mon.getDate()});
+}
+
+const state = { me:"", loaded:false, denied:false, resp:{} };
+MEMBERS.forEach(m => state.resp[m.id] = {slots:{}, exists:false});
+/* Personal link: page-address#member-key, for example  .../#tran-AbC123.  The key is checked by the database rules. */
+let KEY = "";
+(function(){ const m = /^#([a-z]+)-([A-Za-z0-9]{8,})$/.exec(location.hash); if (m && MEMBERS.some(x => x.id === m[1])) { state.me = m[1]; KEY = m[2]; } })();
+
+const BASE = DB_URL.trim().replace(/\/+$/,"");
+const CONFIGURED = /^https:\/\/[^\s"]+$/.test(BASE);
+const timers = {}, busy = {}, dirty = {};
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const editable = () => CONFIGURED && !!state.me && !!KEY && !state.denied;
+const statusOf = (mid, sk) => { const v = state.resp[mid].slots[sk]; return v === "yes" || v === "maybe" ? v : ""; };
+
+function notice(text){ const n = $("notice"); n.textContent = text || ""; n.hidden = !text; }
+
+function renderWho(){
+  $("who").innerHTML = MEMBERS.map(m => {
+    const done = state.resp[m.id].exists;
+    return '<div class="p'+(state.me===m.id?" me":"")+'">'+
+      '<span class="nm">'+esc(m.name)+(state.me===m.id?" (you)":"")+'</span><span class="rl">'+esc(m.role)+'</span>'+
+      '<span class="st'+(done?" done":"")+'">'+(done?"Responded":"Waiting for response")+'</span></div>';
+  }).join("");
+  const me = MEMBERS.find(m => m.id === state.me);
+  $("howto").textContent = editable()
+    ? "Responding as "+me.name+". Tap the times below. Changes save automatically. You can see the other members' answers but only change your own."
+    : "View only. To mark your times, open the personal link that was emailed to you.";
+  $("clear").hidden = !editable();
+}
+
+function renderGrid(){
+  const focusKey = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.s : null;
+  let h = '<thead><tr><th scope="col">Date</th>'+TIMES.map(t => '<th scope="col">'+t.label+'</th>').join("")+'</tr></thead><tbody>';
+  let wk = "";
+  const canClick = editable() && state.me;
+  DAYS.forEach(d => {
+    if (d.week !== wk) { wk = d.week; h += '<tr class="wk"><td colspan="4">'+wk+'</td></tr>'; }
+    h += '<tr><th scope="row">'+d.wd+', '+d.label+'</th>';
+    TIMES.forEach(t => {
+      const sk = d.key+"_"+t.k;
+      let yes = 0, maybe = 0;
+      const chips = MEMBERS.map(m => {
+        const s = statusOf(m.id, sk);
+        if (s === "yes") yes++; else if (s === "maybe") maybe++;
+        return '<i class="chip '+s+(m.id===state.me?" me":"")+'" title="'+esc(m.name)+(s==="yes"?": available":s==="maybe"?": if needed":": not marked")+'">'+m.ini+'</i>';
+      }).join("");
+      const mine = state.me ? statusOf(state.me, sk) : "";
+      const cls = "cell"+(yes+maybe===MEMBERS.length?" all":"")+(mine?" mine-"+mine:"");
+      const tally = (yes+maybe)+" of "+MEMBERS.length+(maybe?" ("+maybe+" if needed)":"");
+      const label = d.wd+" "+d.label+", "+t.label+". "+tally+" available."+(canClick?" Your answer: "+(mine==="yes"?"available":mine==="maybe"?"if needed":"not marked")+".":"");
+      h += '<td>'+(canClick
+        ? '<button type="button" class="'+cls+'" data-s="'+sk+'" aria-label="'+esc(label)+'">'
+        : '<div class="'+cls+'" aria-label="'+esc(label)+'">')+
+        '<span class="chips">'+chips+'</span><span class="tally">'+tally+'</span>'+(canClick?'</button>':'</div>')+'</td>';
+    });
+    h += '</tr>';
+  });
+  $("grid").innerHTML = h+'</tbody>';
+  if (focusKey) { const b = $("grid").querySelector('[data-s="'+focusKey+'"]'); if (b) b.focus(); }
+}
+
+function renderBest(){
+  const rows = [];
+  DAYS.forEach(d => TIMES.forEach(t => {
+    const sk = d.key+"_"+t.k; let yes = 0, maybe = 0;
+    MEMBERS.forEach(m => { const s = statusOf(m.id, sk); if (s==="yes") yes++; else if (s==="maybe") maybe++; });
+    if (yes+maybe) rows.push({when:d.wd+", "+d.label+" · "+t.label, yes, maybe, n:yes+maybe, ord:rows.length});
+  }));
+  const responded = MEMBERS.filter(m => state.resp[m.id].exists).length;
+  if (!rows.length) {
+    $("best").innerHTML = '<li><span class="cnt">'+(state.loaded || !CONFIGURED ? "No times marked yet. The best options will appear here as the committee responds." : "Loading responses…")+'</span></li>';
+    return;
+  }
+  rows.sort((a,b) => b.n-a.n || b.yes-a.yes || a.ord-b.ord);
+  const full = rows.filter(r => r.n === MEMBERS.length);
+  const show = full.length ? full.slice(0,8) : rows.slice(0,5);
+  $("best").innerHTML = show.map(r =>
+    '<li class="'+(r.n===MEMBERS.length?"all":"")+'"><span class="when">'+esc(r.when)+'</span><span class="cnt">'+
+    (r.n===MEMBERS.length ? "Works for all 4" : r.n+" of 4 available")+(r.maybe?" · "+r.maybe+" if needed":"")+'</span></li>').join("")+
+    (full.length ? "" : '<li><span class="cnt">No time works for all four yet. '+responded+' of 4 have responded.</span></li>');
+}
+
+function render(){ renderWho(); renderGrid(); renderBest(); }
+
+function queueSave(id){
+  $("save").textContent = "Saving…";
+  clearTimeout(timers[id]);
+  timers[id] = setTimeout(() => { timers[id] = null; flush(id); }, 500);
+}
+async function flush(id){
+  if (busy[id]) { dirty[id] = true; return; }
+  busy[id] = true;
+  try {
+    const r = await fetch(BASE+"/responses/"+id+".json", {
+      method:"PUT", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ k: KEY, pub: { done: true, slots: state.resp[id].slots, at: new Date().toISOString() } })
+    });
+    if (r.status === 401 || r.status === 403) {
+      state.denied = true; $("save").textContent = "";
+      notice("Your answers were not saved: the key in this link was not accepted. Please open the exact personal link from your email, or reply to the candidate by email.");
+      busy[id] = false; dirty[id] = false; await load(); return;
+    }
+    if (!r.ok) throw new Error("HTTP "+r.status);
+    $("save").textContent = "Saved";
+  } catch (e) {
+    $("save").textContent = "Not saved. Check your connection and tap a time again, or reply by email.";
+  }
+  busy[id] = false;
+  if (dirty[id]) { dirty[id] = false; flush(id); }
+}
+
+$("grid").addEventListener("click", e => {
+  const b = e.target.closest("button[data-s]"); if (!b || !state.me || !editable()) return;
+  const r = state.resp[state.me], sk = b.dataset.s, cur = statusOf(state.me, sk);
+  const slots = Object.assign({}, r.slots);
+  if (cur === "") slots[sk] = "yes"; else if (cur === "yes") slots[sk] = "maybe"; else delete slots[sk];
+  r.slots = slots; r.exists = true;
+  render(); queueSave(state.me);
+});
+$("clear").addEventListener("click", () => {
+  if (!state.me || !editable()) return;
+  state.resp[state.me].slots = {}; state.resp[state.me].exists = true;
+  render(); queueSave(state.me);
+});
+
+render();
+
+async function load(){
+  try {
+    const got = await Promise.all(MEMBERS.map(async m => {
+      const r = await fetch(BASE+"/responses/"+m.id+"/pub.json", {cache:"no-store"});
+      if (!r.ok) throw new Error("HTTP "+r.status);
+      return r.json();
+    }));
+    MEMBERS.forEach((m, i) => {
+      if (timers[m.id] || busy[m.id]) return;
+      const data = got[i], slots = {};
+      if (data && typeof data === "object") {
+        if (data.slots && typeof data.slots === "object") for (const k in data.slots) if (data.slots[k] === "yes" || data.slots[k] === "maybe") slots[k] = data.slots[k];
+        state.resp[m.id] = {slots, exists:true};
+      } else state.resp[m.id] = {slots:{}, exists:false};
+    });
+    state.loaded = true; if (!state.denied) notice(""); render();
+  } catch (e) {
+    if (!state.denied) notice("Responses can't be loaded right now. Check your connection. If this continues, please email your available times to the candidate.");
+    if (!state.loaded) { state.loaded = true; render(); }
+  }
+}
+if (!CONFIGURED) {
+  notice("Setup needed: this page is not connected to a database yet, so answers cannot be saved. Paste the database URL into DB_URL near the top of the script in index.html.");
+} else {
+  load();
+  setInterval(() => { if (!document.hidden) load(); }, 10000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+}
+</script>
+</body>
+</html>
