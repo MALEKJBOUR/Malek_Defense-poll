@@ -55,7 +55,13 @@ p{margin:0}
 .hint{color:var(--muted);font-size:.92rem}
 .linkbtn{font:inherit;font-size:.9rem;background:none;border:1px solid var(--line);border-radius:6px;padding:5px 10px;color:var(--ink);cursor:pointer}
 .linkbtn:hover{border-color:var(--accent);color:var(--accent)}
-#save{font-size:.85rem;color:var(--muted);min-height:1.3em}
+#save{font-size:.92rem;color:var(--muted)}
+#save.warn{color:var(--maybe);font-weight:600}
+#save.ok{color:var(--yes);font-weight:600}
+.confirm{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);margin:0 -18px -18px;padding:12px 18px;border-radius:0 0 10px 10px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.confirm[hidden]{display:none}
+.primary{font:inherit;font-weight:600;background:var(--accent);color:var(--surface);border:0;border-radius:8px;padding:10px 18px;cursor:pointer}
+.primary:disabled{opacity:.45;cursor:default}
 
 /* best */
 .best{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
@@ -99,7 +105,7 @@ button.cell:hover{border-color:var(--accent)}
 <main>
   <header>
     <h1>Dissertation defense: when are you available?</h1>
-    <p class="lede">Please mark every 2-hour slot you could attend between Wednesday, January 20 and Friday, February 5, 2027. All times are Mountain Time. The defense will be set at a time that works for all four committee members.</p>
+    <p class="lede">Please mark every 2-hour slot you could attend on the dates below, between Wednesday, March 10 and Friday, April 2, 2027, then press Confirm my times. All times are Mountain Time. The defense will be set at a time that works for all four committee members.</p>
   </header>
 
   <p class="note" id="notice" hidden></p>
@@ -107,10 +113,7 @@ button.cell:hover{border-color:var(--accent)}
   <section class="panel" aria-labelledby="h-who">
     <h2 id="h-who">Committee</h2>
     <div class="who" id="who"></div>
-    <div class="row">
-      <p class="hint" id="howto"></p>
-      <span id="save" role="status" aria-live="polite"></span>
-    </div>
+    <p class="hint" id="howto"></p>
   </section>
 
   <section class="panel" aria-labelledby="h-grid">
@@ -120,11 +123,14 @@ button.cell:hover{border-color:var(--accent)}
     </div>
     <div class="legend" aria-hidden="true">
       <span><i class="chip yes">ST</i> Available</span>
-      <span><i class="chip maybe">ST</i> If needed</span>
       <span><i class="chip">ST</i> Not marked</span>
-      <span>Tap once for available, twice for if needed, three times to clear.</span>
+      <span>Tap a time to select it. Tap it again to remove it.</span>
     </div>
     <div class="scroll"><table id="grid"></table></div>
+    <div class="confirm" id="confirmbar" hidden>
+      <button class="primary" id="confirm" type="button">Confirm my times</button>
+      <span id="save" role="status" aria-live="polite"></span>
+    </div>
   </section>
 
   <section class="panel" aria-labelledby="h-best">
@@ -152,16 +158,14 @@ const TIMES = [
 ];
 const WD = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MO = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const DAYS = [];
-for (let d = new Date(2027,0,20); d <= new Date(2027,1,5); d.setDate(d.getDate()+1)) {
-  const w = d.getDay();
-  if (w === 0 || w === 6) continue;
-  const key = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const DATES = ["2027-03-10","2027-03-11","2027-03-12","2027-03-22","2027-03-23","2027-03-24","2027-03-25","2027-03-29","2027-03-30","2027-03-31","2027-04-01","2027-04-02"];
+const DAYS = DATES.map(key => {
+  const p = key.split("-").map(Number), d = new Date(p[0], p[1]-1, p[2]), w = d.getDay();
   const mon = new Date(d); mon.setDate(d.getDate() - (w-1));
-  DAYS.push({key, wd:WD[w], label:MO[d.getMonth()]+" "+d.getDate(), week:"Week of "+MO[mon.getMonth()]+" "+mon.getDate()});
-}
+  return {key, wd:WD[w], label:MO[d.getMonth()]+" "+d.getDate(), week:"Week of "+MO[mon.getMonth()]+" "+mon.getDate()};
+});
 
-const state = { me:"", loaded:false, denied:false, resp:{} };
+const state = { me:"", loaded:false, denied:false, unsaved:false, resp:{} };
 MEMBERS.forEach(m => state.resp[m.id] = {slots:{}, exists:false});
 /* Personal link: page-address#member-key, for example  .../#tran-AbC123.  The key is checked by the database rules. */
 let KEY = "";
@@ -173,7 +177,7 @@ const timers = {}, busy = {}, dirty = {};
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const editable = () => CONFIGURED && !!state.me && !!KEY && !state.denied;
-const statusOf = (mid, sk) => { const v = state.resp[mid].slots[sk]; return v === "yes" || v === "maybe" ? v : ""; };
+const statusOf = (mid, sk) => { const v = state.resp[mid].slots[sk]; return v === "yes" ? "yes" : ""; };
 
 function notice(text){ const n = $("notice"); n.textContent = text || ""; n.hidden = !text; }
 
@@ -186,9 +190,11 @@ function renderWho(){
   }).join("");
   const me = MEMBERS.find(m => m.id === state.me);
   $("howto").textContent = editable()
-    ? "Responding as "+me.name+". Tap the times below. Changes save automatically. You can see the other members' answers but only change your own."
+    ? "Responding as "+me.name+". Tap every time that works for you, then press Confirm my times. You can see the other members' answers but only change your own."
     : "View only. To mark your times, open the personal link that was emailed to you.";
   $("clear").hidden = !editable();
+  $("confirmbar").hidden = !editable();
+  $("confirm").disabled = saving || !editable() || !(state.unsaved || !state.resp[state.me].exists);
 }
 
 function renderGrid(){
@@ -245,45 +251,46 @@ function renderBest(){
 
 function render(){ renderWho(); renderGrid(); renderBest(); }
 
-function queueSave(id){
-  $("save").textContent = "Saving…";
-  clearTimeout(timers[id]);
-  timers[id] = setTimeout(() => { timers[id] = null; flush(id); }, 500);
-}
+let saving = false;
+function say(text, cls){ const el = $("save"); el.textContent = text; el.className = cls || ""; }
 async function flush(id){
-  if (busy[id]) { dirty[id] = true; return; }
-  busy[id] = true;
+  if (busy[id]) return;
+  busy[id] = true; saving = true; say("Saving…"); renderWho();
+  const sent = JSON.stringify(state.resp[id].slots);
   try {
     const r = await fetch(BASE+"/responses/"+id+".json", {
       method:"PUT", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({ k: KEY, pub: { done: true, slots: state.resp[id].slots, at: new Date().toISOString() } })
     });
     if (r.status === 401 || r.status === 403) {
-      state.denied = true; $("save").textContent = "";
+      state.denied = true; state.unsaved = false; saving = false; say("");
       notice("Your answers were not saved: the key in this link was not accepted. Please open the exact personal link from your email, or reply to the candidate by email.");
       busy[id] = false; dirty[id] = false; await load(); return;
     }
     if (!r.ok) throw new Error("HTTP "+r.status);
-    $("save").textContent = "Saved";
+    state.resp[id].exists = true;
+    if (JSON.stringify(state.resp[id].slots) === sent) state.unsaved = false;
+    say(state.unsaved ? "Saved, but you changed something since. Press Confirm again." : "Confirmed. Your times are saved. You can change them and confirm again any time.", state.unsaved ? "warn" : "ok");
   } catch (e) {
-    $("save").textContent = "Not saved. Check your connection and tap a time again, or reply by email.";
+    say("Not saved. Check your connection and press Confirm again, or reply by email.", "warn");
   }
-  busy[id] = false;
-  if (dirty[id]) { dirty[id] = false; flush(id); }
+  busy[id] = false; saving = false; render();
 }
 
 $("grid").addEventListener("click", e => {
   const b = e.target.closest("button[data-s]"); if (!b || !state.me || !editable()) return;
   const r = state.resp[state.me], sk = b.dataset.s, cur = statusOf(state.me, sk);
   const slots = Object.assign({}, r.slots);
-  if (cur === "") slots[sk] = "yes"; else if (cur === "yes") slots[sk] = "maybe"; else delete slots[sk];
-  r.slots = slots; r.exists = true;
-  render(); queueSave(state.me);
+  if (cur === "") slots[sk] = "yes"; else delete slots[sk];
+  r.slots = slots; markUnsaved();
 });
+function markUnsaved(){ state.unsaved = true; say("Not saved yet. Press Confirm my times when you are done.", "warn"); render(); }
+$("confirm").addEventListener("click", () => { if (state.me && editable()) flush(state.me); });
+window.addEventListener("beforeunload", e => { if (state.unsaved) { e.preventDefault(); e.returnValue = ""; } });
 $("clear").addEventListener("click", () => {
   if (!state.me || !editable()) return;
-  state.resp[state.me].slots = {}; state.resp[state.me].exists = true;
-  render(); queueSave(state.me);
+  if (!Object.keys(state.resp[state.me].slots).length) return;
+  state.resp[state.me].slots = {}; markUnsaved();
 });
 
 render();
@@ -296,10 +303,10 @@ async function load(){
       return r.json();
     }));
     MEMBERS.forEach((m, i) => {
-      if (timers[m.id] || busy[m.id]) return;
+      if (busy[m.id] || (m.id === state.me && state.unsaved)) return;
       const data = got[i], slots = {};
       if (data && typeof data === "object") {
-        if (data.slots && typeof data.slots === "object") for (const k in data.slots) if (data.slots[k] === "yes" || data.slots[k] === "maybe") slots[k] = data.slots[k];
+        if (data.slots && typeof data.slots === "object") for (const k in data.slots) if (data.slots[k] === "yes") slots[k] = data.slots[k];
         state.resp[m.id] = {slots, exists:true};
       } else state.resp[m.id] = {slots:{}, exists:false};
     });
